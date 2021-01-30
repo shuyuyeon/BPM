@@ -1,0 +1,604 @@
+namespace HiChenWareHouse
+{
+    class Program
+    {
+        static SqlDB sdb = null;
+        static ArrayList opc = new ArrayList();
+        static string sql = string.Empty;
+
+        static void Main(string[] args)
+        {
+            //NPOIReadExcel();
+            sdb = new SqlDB(DataPara.GetDbConnectionString("SPM"));
+            //Hichen_IO();
+            HiChen_WH();
+            //進出倉儲每日合計
+            //ReadExcel("./K.xlsx");
+        }
+
+        static void NPOIReadExcel()
+        {
+            IWorkbook workbook = null;  
+            string fileName = "C:\\HiChen.xlsx";
+            FileStream fileStream = new FileStream(@"C:\K.xlsx", FileMode.Open, FileAccess.Read);
+            if (fileName.IndexOf(".xlsx") > 0) // 2007版本
+            {
+                workbook = new XSSFWorkbook(fileStream);  
+            }
+            else if (fileName.IndexOf(".xls") > 0) // 2003版本
+            {
+                workbook = new HSSFWorkbook(fileStream);  
+            }
+            ISheet sheet = workbook.GetSheetAt(0);  
+            IRow row;// = sheet.GetRow(0);            
+            for (int i = 0; i < sheet.PhysicalNumberOfRows; i++)  //对工作表每一行.LastRowNum
+            {
+                row = sheet.GetRow(i);   
+                if (row != null)
+                {
+                    for (int j = 0; j < row.LastCellNum; j++)  //对工作表每一列，确认column首尾读到
+                    {
+                        string cellValue = row.GetCell(j).ToString(); //获取i行j列数据
+                        Console.WriteLine(cellValue);
+                    }
+                }
+            }
+            Console.ReadLine();
+            fileStream.Close();
+            //workbook.Close();
+        }
+
+        static void ftpFile_LumiSoft()
+        {
+            LumiSoft.Net.FTP.Client.FTP_Client ftp = new LumiSoft.Net.FTP.Client.FTP_Client();
+            string LocalFolder = ConfigurationSettings.AppSettings["LocalFolder"].ToString();
+            string Server = ConfigurationSettings.AppSettings["FTP_Server"].ToString();//AppSettings["FTP_Server"].ToString();
+            string Username = ConfigurationSettings.AppSettings["FTP_User"].ToString();
+            string Password = ConfigurationSettings.AppSettings["FTP_Password"].ToString();
+            int Port = 21;//可能是这影响了路径权限导致？
+            ftp.Connect(Server, Port);
+            ftp.Authenticate(Username, Password);
+            //但我是要直接读取到File流
+            string ewfwfe = "D:Source\\";//\GodownCharges
+            //FileInfo fi = new FileInfo(@"C:\Users\AltonYang\Desktop\func\ftpPath");
+            try
+            {
+                ftp.SetCurrentDir("/" + ewfwfe);
+            }
+            catch(Exception e)
+            {
+                string ge = e.ToString();
+            }
+            string Path = LocalFolder;// + "\\" + LocDir + "\\"
+            if (!Directory.Exists(Path)) Directory.CreateDirectory(Path);
+            if (File.Exists(Path + "NZ01-20200822.xlsx")) File.Delete(Path + "NZ01-20200822.xlsx"); // Allow Overwrite
+            ftp.GetFile("NZ01-20200822.xlsx", Path + "NZ01-20200822.xlsx");//Path + FileName
+            //ftp.
+            string ftpDir = ftp.GetCurrentDir();
+            //DirectoryInfo di = new DirectoryInfo(@"C: \Users\AltonYang\Desktop\func\ftpPath");//+ "\\" + ApDir + "\\" + "Upload路径名错误也会过，而且这没跟ftp接口禹合，当然本地路径  LocalFolder + "\\GodownCharges"
+            //if (!di.Exists)
+            //    di.Create();
+            //FileInfo[] HiChenM = di.GetFiles();//获取本地路径的档案，能否指定特定FileInfo
+            //string folderDir = di.FullName;
+            //foreach (var HiChen in HiChenM)
+            //{
+            //    FileStream HaiChen = HiChen.OpenRead();
+            //}
+            //string[] FileList = N_FTPListHIC("D:Source", ref ftp);
+        }
+
+        static void WebClientftp()
+        {
+            WebClient webclient = new WebClient();
+            webclient.Credentials = new NetworkCredential("saptohic", "Qazwsx#edc");
+            try
+            {
+                byte[] newFileData = webclient.DownloadData(new Uri("ftp://10.141.0.1/").ToString());///D$/Source/GodownCharges + "NZ01-" + "20200820" + ".xlsx"
+            }
+            catch (Exception ex)
+            {
+                Console.Write(ex.ToString());
+            }
+        }
+
+        static void ftpFile_Net()
+        {
+            FileStream HiChenExcel = new FileStream(@"C:\Users\AltonYang\Desktop\func\ftpPath" + "\\" + "NZ01-" + DateTime.Today.ToString("yyyyMMdd") + ".xlsx", FileMode.Open);
+            string ftpUserID = ConfigurationSettings.AppSettings["FTP_User"].ToString();
+            string ftpPassword = ConfigurationSettings.AppSettings["FTP_Password"].ToString();
+            FtpWebRequest ftprq = (FtpWebRequest)FtpWebRequest.Create(new Uri("ftp://10.141.0.1/D$/Source/GodownCharges/" + "NZ01-" + "20200820" + ".xlsx"));//此方法也是下载下来，流要close后才进行读取本地档案的FileStream建构DateTime.Today.ToString("yyyyMMdd")
+            ftprq.Method = WebRequestMethods.Ftp.DownloadFile;
+            ftprq.UseBinary = true;
+            ftprq.Credentials = new NetworkCredential(ftpUserID,ftpPassword);
+            FtpWebResponse ftpResponse = (FtpWebResponse)ftprq.GetResponse();
+            StreamReader ftpstreamtreader = new StreamReader(ftpResponse.GetResponseStream());
+            string line = ftpstreamtreader.ReadLine();
+            Stream ftpstream = ftpResponse.GetResponseStream();
+        }
+
+        static string[] N_FTPListHIC(string dirName, ref LumiSoft.Net.FTP.Client.FTP_Client ftp)
+        {
+            try
+            {
+                ftp.SetCurrentDir(dirName);//"/" + 
+                LumiSoft.Net.FTP.FTP_ListItem[] r = ftp.GetList();
+                Hashtable ht = new Hashtable();
+
+                for (int i = 0; i < r.Length; i++)
+                {
+                    if (r[i].IsFile)
+                    {
+                        ht.Add(r[i].Name, r[i].Name);
+                    }
+                }
+
+                string[] ReturnArray = new string[ht.Count];
+                int k = 0;
+                foreach (string key in ht.Keys)
+                {
+                    ReturnArray[k] = key;
+                    k++;
+                }
+                //Utility.WriteLog("- FTP : OK");
+                return ReturnArray;
+            }
+            catch (Exception e)
+            {
+                Console.Write(e.ToString());
+                //Utility.WriteLog("# FTP Error: " + dirName + "-" + e.Message + e.StackTrace);
+                //Utility.MailAlarm("[HIC FtpMirror] N_FTPListHIC Catch Exception", "# FTP Error:" + dirName + "-" + e.Message + e.StackTrace);
+            }
+            return new string[0];
+        }
+
+        static void HiChen_WH()
+        {
+            ftpFile_LumiSoft();
+            HiChenWH HiChenWH = new HiChenWH();
+            ExcelInterop HiS = new ExcelInterop();
+            //FileInfo fi = new FileInfo();
+            //我看了liu 写的那段 在操作到LocalFolder的地方并没有跟ftp接口禹合，仅是在开启fpt链接后exec
+
+            IWorkbook workbook = null;
+            //string filename = @"10.141.0.1\D:\Source\GodownCharges\NZ01-20200801.xlsx";
+            //string filename = @"C:\NZ01-" + DateTime.Today.ToString("yyyyMMdd") + ".xlsx";
+            string filename = @"C:\NZ01-20200813.xlsx";
+            //StreamReader fwef = new StreamReader();不能少构参
+            FileStream fileStream = new FileStream(filename, FileMode.Open, FileAccess.Read);//@"C:\HiChen.xlsx"
+            try
+            {
+                workbook = new XSSFWorkbook(fileStream);
+            }
+            catch(ArgumentException ex)
+            {
+                Console.WriteLine("{0}: {1}", ex.GetType().Name, ex.Message);
+            }
+
+            ISheet sheet;
+            IRow row;
+
+            for(int i = 0; i <= 2; i++)
+            {
+                sheet = workbook.GetSheetAt(i);
+                //IRow row;
+
+                if(i == 0 || i == 1)
+                {
+                    #region
+                    for (int j = 1; j < sheet.PhysicalNumberOfRows; j++)  //对工作表每一行.LastRowNum,i < sheet.PhysicalNumberOfRows
+                    {
+                        row = sheet.GetRow(j);   //row读入第i行数据
+                        if (row != null)
+                        {
+                            //for循环进Storage或IO模型
+                            /*for (int j = 0; j < row.LastCellNum; j++)  //对工作表每一列
+                            {
+                                string cellValue = row.GetCell(j).ToString(); //获取i行j列数据
+                                HiS.MaterialNo = row.GetCell(j).ToString();
+                                //建个List模型类
+                                //HiChenStorage.Material = row.GetCell(j).ToString();
+                                //List<HiChenIO>orList<HiChenStorage>.Add() 
+                                //Console.WriteLine(cellValue);//正式这不印
+                            }*/
+                            if (i == 0)
+                                HiS.OperateType = "I";
+                            else if (i == 1)
+                                HiS.OperateType = "O";
+                            HiS.WH = "";
+                            HiS.ID_DATE = Convert.ToDateTime("2020-08-21");//DateTime.Today.Date;隔天的早上执行的day-1，兼考虑1号时计算-1天
+                            HiS.DateTime = Convert.ToDateTime(row.GetCell(0).ToString().Trim());
+                            HiS.ReceiptNo = row.GetCell(1).ToString();
+                            HiS.MaterialNo = row.GetCell(2).ToString();
+                            HiS.ProductName = row.GetCell(3).ToString();
+                            HiS.PLTS = Convert.ToInt32(row.GetCell(4).ToString());
+                            HiS.CTNS = Convert.ToInt32(row.GetCell(5).ToString());
+                            //string pcs = row.GetCell(6).ToString();
+                            //HiS.PCS = Convert.ToInt32(pcs.Substring(0, pcs.IndexOf(".")));//隐式转换.Substring(0, pcs.IndexOf("."))
+                            HiS.PCS = Convert.ToInt32(row.GetCell(6).ToString());
+                            HiS.OperateNo = row.GetCell(14).ToString();
+                            HiS.DNNumber = row.GetCell(15).ToString();
+                            HiS.GRGISlip = row.GetCell(17).ToString();
+                            HiS.updatetime = null;
+
+                            //HiS.Plate_Num = row.GetCell(4);
+                            //sql = "insert into TB_HiChenWareHouse_IO"
+                            //回圈外？
+                            string sqlTmp = "@OperateType,@WH,@ID_DATE,@[DateTime],@ReceiptNo,@MaterialNo,@ProductName,@PLTS,@CTNS,@PCS,@OperateNo,@GRGISlip";//,@updatetime
+                            sql = "INSERT INTO TB_HiChenWareHouse_IO(" + sqlTmp.Replace("@", " ") + ")VALUES(" + sqlTmp.Replace("[", "").Replace("]", "") + ")";//@Applicant,@[Name] TB_Drom_Apply,@[DN Number|DNLine]
+                                                                                                                                                                //DataPara用到？不用
+                                                                                                                                                                //insert语句在外？
+                                                                                                                                                                //LiteOn.DAL方法批量入
+
+                            opc.Clear();
+                            opc.Add(DataPara.CreateDataParameter("@OperateType", SqlDbType.VarChar, HiS.OperateType));
+                            opc.Add(DataPara.CreateDataParameter("@WH", SqlDbType.VarChar, HiS.WH));//@Applicant
+                            opc.Add(DataPara.CreateDataParameter("@ID_DATE", SqlDbType.DateTime, HiS.ID_DATE));
+                            opc.Add(DataPara.CreateDataParameter("@DateTime", SqlDbType.DateTime, HiS.DateTime));
+                            opc.Add(DataPara.CreateDataParameter("@ReceiptNo", SqlDbType.NVarChar, HiS.ReceiptNo));
+                            opc.Add(DataPara.CreateDataParameter("@MaterialNo", SqlDbType.NVarChar, HiS.MaterialNo));
+                            opc.Add(DataPara.CreateDataParameter("@ProductName", SqlDbType.NVarChar, HiS.ProductName));
+                            opc.Add(DataPara.CreateDataParameter("@PLTS", SqlDbType.Int, HiS.PLTS));
+                            opc.Add(DataPara.CreateDataParameter("@CTNS", SqlDbType.Int, HiS.CTNS));
+                            opc.Add(DataPara.CreateDataParameter("@PCS", SqlDbType.Int, HiS.PCS));
+                            opc.Add(DataPara.CreateDataParameter("@OperateNo", SqlDbType.NVarChar, HiS.OperateNo));
+                            //opc.Add(DataPara.CreateDataParameter("@DN Number|DNLine", SqlDbType.NVarChar, HiS.DNNumberDNLine));海晨调整过后待增加栏位
+                            opc.Add(DataPara.CreateDataParameter("@GRGISlip", SqlDbType.NVarChar, HiS.GRGISlip));
+                            //opc.Add(DataPara.CreateDataParameter("@updatetime", SqlDbType.DateTime, HiS.updatetime));
+
+                            try
+                            {
+                                sdb.ExecuteNonQuery(sql, opc);
+                            }
+                            catch(Exception ex)
+                            {
+                                Console.Write(ex.ToString());
+                            }
+
+                            //Console.Write(HiS.ProductName);
+                        }
+                    }
+                    #endregion
+                }
+
+                if(i == 2)
+                {
+                    #region
+                    for (int j = 1; j < sheet.PhysicalNumberOfRows; j++)
+                    {
+                        row = sheet.GetRow(j);
+                        if (row != null)
+                        {
+                            HiChenWH.StartDate = Convert.ToDateTime(row.GetCell(0).ToString().Trim());//Convert.ToDateTime(sd.Substring(0,sd.IndexOf(" ")));主要是这个方法加上的00:0000
+                            HiChenWH.ID_DATE = Convert.ToDateTime("2020-08-21");//DateTime.Today.Date;
+                            HiChenWH.Vendor_Code = row.GetCell(1).ToString();
+                            HiChenWH.Vendor_Name = row.GetCell(2).ToString();
+                            HiChenWH.MaterialNo = row.GetCell(3).ToString();
+                            HiChenWH.ProductName = row.GetCell(4).ToString();
+                            HiChenWH.EProductName = row.GetCell(5).ToString();
+                            HiChenWH.PLTS = Convert.ToInt32(row.GetCell(6).ToString());
+                            HiChenWH.CTNS = Convert.ToInt32(row.GetCell(7).ToString());
+                            //string ea = row.GetCell(8).ToString();
+                            //HiChenWH.EA = Convert.ToInt32(ea.Substring(0, ea.IndexOf(".")));//ea.Substring(0, ea.IndexOf("."))
+                            HiChenWH.EA = Convert.ToInt32(row.GetCell(8).ToString());
+                            HiChenWH.Position = row.GetCell(9).ToString();
+                            HiChenWH.PLANT = row.GetCell(10).ToString();
+                            HiChenWH.Location = row.GetCell(11).ToString();
+                            HiChenWH.Sector = row.GetCell(12).ToString();
+                            HiChenWH.UOM = row.GetCell(13).ToString();
+                            HiChenWH.ReceiptNo = row.GetCell(14).ToString();
+                            HiChenWH.OperateNo = row.GetCell(15).ToString();
+                            HiChenWH.DNNumber = row.GetCell(16).ToString();
+                            HiChenWH.DNLine = row.GetCell(17).ToString();
+                            HiChenWH.GRGISlip = row.GetCell(18).ToString();
+                            HiChenWH.updatetime = null;
+
+                            string sqlTmp = "@ID_DATE,@StartDate,@Vendor_Code,@Vendor_Name,@MaterialNo,@ProductName,@EProductName,@PLTS,@CTNS,@EA,@Position,@PLANT,@Location,@Sector,@UOM,@ReceiptNo,@OperateNo,@GRGISlip";//,@DN_Number,@DNLine
+                            sql = "INSERT INTO TB_HiChenWH(" + sqlTmp.Replace("@", " ") + ")VALUES(" + sqlTmp.Replace("[", "").Replace("]", "") + ")";
+
+                            opc.Clear();
+                            opc.Add(DataPara.CreateDataParameter("@ID_DATE", SqlDbType.DateTime, HiChenWH.ID_DATE));
+                            opc.Add(DataPara.CreateDataParameter("@StartDate", SqlDbType.DateTime, HiChenWH.StartDate));//@Applicant
+                            opc.Add(DataPara.CreateDataParameter("@Vendor_Code", SqlDbType.VarChar, HiChenWH.Vendor_Code));
+                            opc.Add(DataPara.CreateDataParameter("@Vendor_Name", SqlDbType.NVarChar, HiChenWH.Vendor_Name));
+                            opc.Add(DataPara.CreateDataParameter("@MaterialNo", SqlDbType.VarChar, HiChenWH.MaterialNo));
+                            opc.Add(DataPara.CreateDataParameter("@ProductName", SqlDbType.NVarChar, HiChenWH.ProductName));
+                            opc.Add(DataPara.CreateDataParameter("@EProductName", SqlDbType.NVarChar, HiChenWH.EProductName));
+                            opc.Add(DataPara.CreateDataParameter("@PLTS", SqlDbType.Int, HiChenWH.PLTS));
+                            opc.Add(DataPara.CreateDataParameter("@CTNS", SqlDbType.Int, HiChenWH.CTNS));
+                            opc.Add(DataPara.CreateDataParameter("@EA", SqlDbType.Int, HiChenWH.EA));
+                            opc.Add(DataPara.CreateDataParameter("@Position", SqlDbType.VarChar, HiChenWH.Position));
+                            opc.Add(DataPara.CreateDataParameter("@PLANT", SqlDbType.VarChar, HiChenWH.PLANT));
+                            opc.Add(DataPara.CreateDataParameter("@Location", SqlDbType.VarChar, HiChenWH.Location));
+                            opc.Add(DataPara.CreateDataParameter("@Sector", SqlDbType.VarChar, HiChenWH.Sector));
+                            opc.Add(DataPara.CreateDataParameter("@UOM", SqlDbType.VarChar, HiChenWH.UOM));
+                            opc.Add(DataPara.CreateDataParameter("@ReceiptNo", SqlDbType.VarChar, HiChenWH.ReceiptNo));
+                            opc.Add(DataPara.CreateDataParameter("@OperateNo", SqlDbType.VarChar, HiChenWH.OperateNo));
+                            //opc.Add(DataPara.CreateDataParameter("@DN_Number", SqlDbType.VarChar, HiChenWH.DNNumber));
+                            //opc.Add(DataPara.CreateDataParameter("@DNLine", SqlDbType.VarChar, HiChenWH.DNLine));
+                            opc.Add(DataPara.CreateDataParameter("@GRGISlip", SqlDbType.VarChar, HiChenWH.GRGISlip));
+                            //opc.Add(DataPara.CreateDataParameter("@updatetime", SqlDbType.VarChar, HiChenWH.updatetime));
+
+                            try
+                            {
+                                sdb.ExecuteNonQuery(sql, opc);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.Write(ex.ToString());
+                            }
+                        }
+                    }
+                    #endregion
+                }
+            }
+            fileStream.Close();
+        }
+
+        static void Hichen_IO()//string excelPath
+        {
+            ExcelInterop HiS = new ExcelInterop();
+            //List<ExcelInterop> LHis = new List<ExcelInterop>();
+
+            IWorkbook workbook = null;  //新建IWorkbook对象
+            string fileName = "C:\\HiChen.xlsx";//動態取
+            FileStream fileStream = new FileStream(@"C:\HiChen.xlsx",FileMode.Open, FileAccess.ReadWrite);//, 
+            if (fileName.IndexOf(".xlsx") > 0) // 2007版本
+            {
+                try
+                {
+                    workbook = new XSSFWorkbook(fileStream);  //xlsx数据读入workbook
+                }
+                catch(Exception ex)
+                {
+                    Console.Write(ex.ToString());
+                }
+            }
+            else if (fileName.IndexOf(".xls") > 0) // 2003版本
+            {
+                workbook = new HSSFWorkbook(fileStream);  //xls数据读入workbook
+            }
+
+            //又或者在这for回圈for(int i=0; i <= 2; i++)
+            
+
+            ISheet sheet = workbook.GetSheetAt(0);  //获取第一个工作表,外層迴圈再if判斷進/出(同表).倉儲
+            IRow row;// = sheet.GetRow(0);            //新建当前工作表行数据
+            for (int i = 1; i < 2; i++)  //对工作表每一行.LastRowNum,i < sheet.PhysicalNumberOfRows
+            {
+                row = sheet.GetRow(i);   //row读入第i行数据
+                if (row != null)
+                {
+                    //for循环进Storage或IO模型
+                    /*for (int j = 0; j < row.LastCellNum; j++)  //对工作表每一列
+                    {
+                        string cellValue = row.GetCell(j).ToString(); //获取i行j列数据
+                        HiS.MaterialNo = row.GetCell(j).ToString();
+                        //建个List模型类
+                        //HiChenStorage.Material = row.GetCell(j).ToString();
+                        //List<HiChenIO>orList<HiChenStorage>.Add() 
+                        //Console.WriteLine(cellValue);//正式这不印
+                    }*/
+                    HiS.OperateType = "I";//采回圈则判断,O还是要进表,为后续业务拓展用
+                    HiS.WH = "";//row.GetCell(3).ToString();
+                    HiS.ID_DATE = DateTime.Today;//row.GetCell(4).ToString();
+                    string IDate = row.GetCell(0).ToString().Trim();// "2020-08-10 11:30:30""02/11/1990,12:11:30.222222";
+                    DateTime dt = Convert.ToDateTime(IDate);
+                    HiS.DateTime = dt;
+                    HiS.ReceiptNo = row.GetCell(1).ToString();
+                    HiS.MaterialNo = row.GetCell(2).ToString();
+                    HiS.ProductName = row.GetCell(3).ToString();
+                    HiS.PLTS = Convert.ToInt32(row.GetCell(4).ToString());
+                    HiS.CTNS = Convert.ToInt32(row.GetCell(5).ToString());
+                    string pcs = row.GetCell(6).ToString();
+                    HiS.PCS = Convert.ToInt32(pcs.Substring(0, pcs.IndexOf(".")));//隐式转换
+                    HiS.OperateNo = row.GetCell(7).ToString();
+                    HiS.DNNumber = row.GetCell(8).ToString();
+                    HiS.GRGISlip = row.GetCell(9).ToString();
+                    HiS.updatetime = null;//row.GetCell(11).ToString();
+
+                    //HiS.Plate_Num = row.GetCell(4);
+                    //sql = "insert into TB_HiChenWareHouse_IO"
+                    //回圈外？
+                    string sqlTmp = "@OperateType,@WH,@ID_DATE,@[DateTime],@ReceiptNo,@MaterialNo,@ProductName,@PLTS,@CTNS,@PCS,@OperateNo,@GRGISlip";//,@updatetime
+                    sql = "INSERT INTO TB_HiChenWareHouse_IO(" + sqlTmp.Replace("@", " ") + ")VALUES(" + sqlTmp.Replace("[", "").Replace("]", "") + ")";//@Applicant,@[Name] TB_Drom_Apply,@[DN Number|DNLine]
+                    //DataPara用到？不用
+                    //insert语句在外？
+                    //LiteOn.DAL方法批量入
+
+                    opc.Clear();
+                    opc.Add(DataPara.CreateDataParameter("@OperateType", SqlDbType.VarChar, HiS.OperateType));
+                    opc.Add(DataPara.CreateDataParameter("@WH", SqlDbType.VarChar, HiS.WH));//@Applicant
+                    opc.Add(DataPara.CreateDataParameter("@ID_DATE", SqlDbType.DateTime, HiS.ID_DATE));
+                    opc.Add(DataPara.CreateDataParameter("@DateTime", SqlDbType.DateTime, HiS.DateTime));
+                    opc.Add(DataPara.CreateDataParameter("@ReceiptNo", SqlDbType.NVarChar, HiS.ReceiptNo));
+                    opc.Add(DataPara.CreateDataParameter("@MaterialNo", SqlDbType.NVarChar, HiS.MaterialNo));
+                    opc.Add(DataPara.CreateDataParameter("@ProductName", SqlDbType.NVarChar, HiS.ProductName));
+                    opc.Add(DataPara.CreateDataParameter("@PLTS", SqlDbType.Int, HiS.PLTS));
+                    opc.Add(DataPara.CreateDataParameter("@CTNS", SqlDbType.Int, HiS.CTNS));
+                    opc.Add(DataPara.CreateDataParameter("@PCS", SqlDbType.Int, HiS.PCS));
+                    opc.Add(DataPara.CreateDataParameter("@OperateNo", SqlDbType.NVarChar, HiS.OperateNo));
+                    //opc.Add(DataPara.CreateDataParameter("@DN Number|DNLine", SqlDbType.NVarChar, HiS.DNNumberDNLine));
+                    opc.Add(DataPara.CreateDataParameter("@GRGISlip", SqlDbType.NVarChar, HiS.GRGISlip));
+                    //opc.Add(DataPara.CreateDataParameter("@updatetime", SqlDbType.DateTime, HiS.updatetime));
+
+                    sdb.ExecuteNonQuery(sql, opc);
+
+                    Console.Write(HiS.ProductName);
+                }
+            }
+
+            //sdb批量
+
+            Console.ReadLine();
+            fileStream.Close();
+            //workbook.Close();
+        }
+
+
+
+        //static void OpenExcel(string strFileName)
+        //{
+        //    /*string ConStr = "server=.;database=AFKdb;uid=sa;pwd=123";
+        //    SqlConnection conn = new SqlConnection(ConStr);
+        //    conn.Open();
+        //    SqlCommand cmd = new SqlCommand();
+        //    cmd.Connection = conn;*///以上为连接数据库
+
+        //    //以上改liton链接func
+        //    object missing = System.Reflection.Missing.Value;
+        //    Excel.Application excel = new Excel.Application();//lauch excel application,Excel.ApplicationClass();
+        //    //excel.FindFile();
+        //    if (excel == null)
+        //    {
+        //        Console.WriteLine("Can't access excel");
+        //    }
+        //    else
+        //    {
+        //        excel.Visible = false; excel.UserControl = true;// 以只读的形式打开EXCEL文件
+        //        Excel.Workbook wb = excel.Application.Workbooks.Open(strFileName, missing, true, missing, missing, missing,
+        //         missing, missing, missing, true, missing, missing, missing, missing, missing);//取得第一个工作簿
+
+
+        //        for (int nv = 13; nv < 17; nv++)
+        //        {
+        //            // int nv = 13;//sheet
+        //            Excel.Worksheet ws = (Excel.Worksheet)wb.Worksheets.get_Item(nv);//get_Intem(n)取得第n个sheet
+        //                                                                             //以下俩行代码取得总记录行数(包括标题行)
+        //            int rowsint = ws.UsedRange.Cells.Rows.Count;//得到行数
+        //            int columnsint = ws.UsedRange.Cells.Columns.Count;//得到列数
+
+
+
+        //            for (int month = 0; month < columnsint; month++)//循环列
+        //            {
+
+
+
+        //                Excel.Range rng1 = ws.Cells.get_Range(ws.Cells[2, month + 1], ws.Cells[rowsint, month + 1]);//获取数据的范围,先写行在写列,此处为获取一列的数据
+        //                Excel.Range rng2 = ws.Cells.get_Range(ws.Cells[1, month + 1], ws.Cells[1, month + 1]);//返回某单元格的值,先写行在写列
+        //                object[,] arry1 = (object[,])rng1.Value2;   //get range's value    将数据储存的arry1中
+        //                string[,] arry = new string[rowsint, 1];
+        //                for (int q = 1; q <= rowsint - 1; q++)//转化为arry
+        //                {
+        //                    arry[q - 1, 0] = arry1[q, 1].ToString();
+        //                }
+
+
+        //                for (int j = 0; j < rowsint - 1; j++)//数据已存储进arry,即可对数据进行操作了
+        //                                                     //以下代码对excel的数据的操作,没有多大的借鉴作用
+        //                {
+        //                    //
+
+        //                    //cmd.CommandText += "insert AFKdb.dbo.AllData(GUID, sex, int_item, int_month, num_value, createtime)values(NEWID(), '1', '101', '"+rng2.Value2+"', '"+ arry[j, 0]+"', getdate())";//身高男
+        //                    //cmd.CommandText += "insert AFKdb.dbo.AllData(GUID, sex, int_item, int_month, num_value, createtime)values(NEWID(), '1', '102', '" + rng2.Value2 + "', '" + arry[j, 0] + "', getdate())";//体重男
+        //                    // cmd.CommandText += "insert AFKdb.dbo.AllData(GUID, sex, int_item, int_month, num_value, createtime)values(NEWID(), '1', '10"+ textBox1.Text.Trim()+"', '" + rng2.Value2 + "', '" + arry[j, 0] + "', getdate())";//第几个sheet男
+        //                    //cmd.CommandText += "insert AFKdb.dbo.AllData(GUID, sex, int_item, int_month, num_value, createtime)values(NEWID(), '2', '10" + nv.ToString() + "', '" + rng2.Value2 + "', '" + arry[j, 0] + "', getdate())";//第几个sheet女
+        //                    //cmd.CommandText += "insert AFKdb.dbo.AllData(GUID, sex, int_item, int_month, num_value, createtime,unit)values(NEWID(), '1', '100" + (month+1).ToString() + "', '-1 ', '" + arry[j, 0] + "', getdate(),'周')";//第一次男
+        //                    // cmd.CommandText += "insert AFKdb.dbo.AllData(GUID, sex, int_item, int_month, num_value, createtime,unit)values(NEWID(), '2', '100" + (month + 1).ToString() + "', '-1 ', '" + arry[j, 0] + "', getdate(),'周')";
+        //                    // cmd.CommandText += "insert AFKdb.dbo.AllData(GUID, sex, int_item, int_month, num_value, createtime,unit)values(NEWID(), '2', '200" +(nv-10).ToString()+ "', '" + rng2.Value2 + "', '" + arry[j, 0] + "', getdate(),'小时')";//各项时间
+        //                    //cmd.CommandType = CommandType.Text;
+        //                    //int i = Convert.ToInt32(cmd.ExecuteNonQuery());
+        //                    //label2.Text = "第" + nv.ToString() + "个sheet," + "第" + month.ToString() + "列" + j.ToString();
+        //                   // cmd.CommandText = "";
+
+
+        //                }
+
+
+
+
+        //            }
+
+
+
+
+
+        //            //if (conn.State == ConnectionState.Open)
+        //            //{
+        //            //    //label1.Text = "数据库第(" + nv + ")sheet已经导入";
+
+
+        //            //}
+
+        //        }
+        //    }
+        //    excel.Quit(); excel = null;
+        //    Process[] procs = Process.GetProcessesByName("excel");
+        //    foreach (Process pro in procs)
+        //    {
+
+
+        //        pro.Kill();//没有更好的方法,只有杀掉进程
+        //    }
+
+
+        //    GC.Collect();
+
+
+        //}
+
+        //static void ReadExcel(string excelPath)
+        //{
+        //    string ExcelFilePath = excelPath.Trim();
+        //    //set columns
+        //    Dictionary<string, string> dic = new Dictionary<string, string>();
+        //    //dic.Add("订单号", "A");//
+        //    //dic.Add("数量", "B");
+        //    dic.Add("发票号", "C");
+        //    dic.Add("料号", "D");
+        //    dic.Add("品名", "E");
+        //    dic.Add("PLTS", "F");
+        //    dic.Add("CTNS", "G");
+        //    dic.Add("PCS", "H");
+        //    dic.Add("管作业单号", "I");
+        //    dic.Add("DN Number|DNLine", "J");
+        //    dic.Add("GRGISlip", "K");
+
+        //    Excel.Application excel = new Excel.Application();
+        //    Excel.Workbook wb = null;
+        //    excel.Visible = false;//设置调用引用的 Excel文件是否可见
+        //    excel.DisplayAlerts = false;
+        //    wb = excel.Workbooks.Open(ExcelFilePath);
+        //    Excel.Worksheet ws = (Excel.Worksheet)wb.Worksheets[1]; //索引从1开始 //(Excel.Worksheet)wb.Worksheets["SheetName"];
+        //    int rowCount = 0;//有效行，索引从1开始
+        //    try
+        //    {
+        //        rowCount = ws.UsedRange.Rows.Count;//赋值有效行
+
+        //        string ordernum = string.Empty;
+        //        string count = string.Empty;
+        //        //循环行
+        //        for (int i = 1; i <= rowCount; i++)//
+        //        {
+        //            if (ws.Rows[i] != null)
+        //            {
+        //                //ordernum = ws.Cells[i, dic["订单号"]].Value2.ToString();//取单元格值
+        //                //count = ws.Cells[i, dic["数量"]].Value2.ToString();//ws.Cells[i, 2].Value2.ToString();
+        //                count = ws.Cells[i, dic["发票号"]].ToString();
+        //                count = ws.Cells[i, dic["料号"]].ToString();
+        //                count = ws.Cells[i, dic["品名"]].ToString();
+        //                count = ws.Cells[i, dic["PLTS"]].ToString();
+        //                count = ws.Cells[i, dic["CTNS"]].ToString();
+        //                count = ws.Cells[i, dic["PCS"]].ToString();
+        //                count = ws.Cells[i, dic["管作业单号"]].ToString();
+        //                count = ws.Cells[i, dic["DN Number|DNLine"]].ToString();
+        //                count = ws.Cells[i, dic["GRGISlip"]].ToString();
+        //            }
+        //        }
+        //        //循环列
+        //        for (int i = 1; i <= ws.UsedRange.Columns.Count; i++)
+        //        {
+        //            //ws.Columns[i]
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        //XtraMessageBox.Show(ex.Message, "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        //    }
+        //    finally
+        //    {
+        //        //ClosePro(excelPath, excel, wb);
+        //    }
+        //}
+    }
+}
