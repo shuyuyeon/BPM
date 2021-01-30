@@ -1,0 +1,941 @@
+public partial class _ParkCheck : System.Web.UI.Page
+{
+    //SqlDB sdb = new SqlDB(DataPara.GetDbConnectionString("SPM"));
+    string sdbHRCon = "";
+    string sdbParkNO = "";
+    String sql = "";
+    ArrayList opc = new ArrayList();
+    //String sLogonID = "";
+    JArray ja_all;
+    JArray ja_self;
+    string xmlVariable 
+    StringBuilder xmlData = new StringBuilder();
+    string subject = string.Empty;
+    string sCName = string.Empty;
+    string sEMail = string.Empty;
+    string sDept = string.Empty;
+    string sExtNo = string.Empty;
+    string sPlant = string.Empty;
+    //SPMBasic SPMBasic_class = new SPMBasic();
+    //Model_SPMUserInfo SPMUserInfo = new Model_SPMUserInfo();
+    string sFormNO = "";
+    string sdbSPMCon = "";
+    string sdbICDBCon = "";
+    DataTable dtParkList = new DataTable();
+    //string NO_MEMBER_DATA = "";
+    //string NO_PARKING_SPACE = "";
+    //string NO_WRONG_PLATE_NO = "";
+    //string NO_WRONG_CAR_PIC = "";
+    //string WRONG_CAR_LICENSE_FORMAT = "";
+
+    protected void Page_Load(object sender, EventArgs e)
+    {
+        if (!Page.IsPostBack)
+        {
+            iPathParkSpace.Value = Server.MapPath("~/Images/Vehicle/ParkSpace/");
+            if (Request.Cookies["SCookieWeb"] == null || Request.Cookies["SCookieWeb"].Value.ToString().Length == 0)//取记录中的userName
+            {
+                Response.Redirect("~/Web/ParkSpace/ParkLogin.aspx");
+            }
+            else
+            {
+                sLogonID.Value = Request.Cookies["SCookieWeb"].Value.ToString();
+                lbUser.InnerText = ":" + sLogonID.Value.ToString();
+
+                SqlDB sdb = new SqlDB();
+                sql = @" 
+                    --DECLARE @employee_id NVARCHAR(50)
+                    --SET @employee_id = '10015799'
+                    --DECLARE @personal_id NVARCHAR(50)
+                    --SET @personal_id = '216430'
+
+                    SELECT employee_id,personal_id,Name,leaved_flag 
+                    FROM  employee
+                    WHERE employee_id=@employee_id
+                    AND leaved_flag = 'N'";
+                opc.Clear();
+                opc.Add(DataPara.CreateDataParameter("@employee_id", SqlDbType.NVarChar, sLogonID.Value.ToString()));
+
+                DataTable dt = sdb.Execute(sql, opc, 30000);
+                if (dt.Rows.Count > 0)
+                {
+                    lbUser.InnerText = ":" + sLogonID.Value.ToString() + " 姓名:" + dt.Rows[0]["name"].ToString();
+                }
+                else
+                {
+                    btnLogout_Click(null, null);
+                }
+            }
+
+            //
+            if (sLogonID.Value != null && sLogonID.Value.ToString() != "" && (sLogonID.Value.ToString().StartsWith("9000") || sLogonID.Value.ToString().StartsWith("9040") || sLogonID.Value.ToString().StartsWith("10015799")))//
+            {
+                txtOperEID.Text = sLogonID.Value.ToString();
+                //01.INIT 
+                {
+                    sql = @"DECLARE @nowDate NVARCHAR(10);
+                    SET @nowDate = CONVERT(NVARCHAR(10), GETDATE(), 121);
+                    DECLARE @tmpList TABLE( ParkSpaceID NVARCHAR(10),
+                                            pValue      NVARCHAR(100));
+                    INSERT INTO @tmpList
+                           SELECT '' AS ParkSpaceID,
+                                  '' AS pValue;
+                    INSERT INTO @tmpList
+                           SELECT T1.ParkSpaceID,
+                                  T1.ParkSpaceID + '@' + pc.fName + '@' + T1.employeeid + '@' + T1.CarPlate COLLATE DATABASE_DEFAULT AS pValue
+                           FROM(
+                               SELECT CarPlate,
+                                      ParkSpaceID,
+                                      employeeid
+                               FROM TB_ParkSpaceMap
+                               WHERE 1 = 1
+                                 AND ENABLE = 'Y'
+                                 AND @nowDate + '_' + ParkSpaceID NOT IN(
+                                        SELECT CONVERT( NVARCHAR(10), bookDate, 121) + '_' + PB.parkSpaceID
+                                        FROM  PB
+                                        WHERE CONVERT(NVARCHAR(10), bookDate, 121) = @nowDate
+                                          AND PB.ParkSpaceID = TB_ParkSpaceMap.ParkSpaceID )
+                               UNION ALL
+                               SELECT CarPlate,
+                                      ParkSpaceID,
+                                      employeeid
+                               FROM 
+                               WHERE CONVERT(NVARCHAR(10), bookDate, 121) = @nowDate ) T1,
+                               RID641.icdb.dbo.V_CustomerInfo_PhysicCard pc
+                           WHERE T1.employeeid = pc.fEmployeeCode COLLATE DATABASE_DEFAULT
+                           ORDER BY CONVERT( INT, T1.ParkSpaceID);
+                    SELECT *
+                    FROM @tmpList
+                    WHERE ParkSpaceID != ''
+                    ORDER BY CONVERT( INT, ParkSpaceID);
+                    ";
+                    opc.Clear();
+
+                    DataTable dt = sdb.Execute(sql, opc, 30000);
+                    if (dt.Rows.Count > 0)
+                    {
+                        sbParkNo.DataTextField = "ParkSpaceID";
+                        sbParkNo.DataValueField = "pValue";
+                        sbParkNo.DataSource = dt;
+                        sbParkNo.DataBind();
+                        unParkNo.DataTextField = "ParkSpaceID";
+                        unParkNo.DataValueField = "ParkSpaceID";
+                        unParkNo.DataSource = dt;
+                        unParkNo.DataBind();
+                    }
+
+                    sql = "select parkspaceid from tb_ParkSpaceRecord where occrtime >= convert(varchar(10),Getdate(),120) and occrtime < convert(varchar(10),dateadd(d,1,Getdate()),120) and WrongPlateNo != '' order by parkspaceid";
+                    opc.Clear();
+
+                    //opc.Add(DataPara.CreateProcParameter("@P_Begin", SqlDbType.DateTime, 8, ParameterDirection.Input, Convert.ToDateTime("2020-06-30")));
+                    //opc.Add(DataPara.CreateProcParameter("@P_End", SqlDbType.DateTime, 8, ParameterDirection.Input, Convert.ToDateTime("2020-07-01")));
+                    //opc.Add(DataPara.CreateProcParameter("@P_ParkSpaceID", SqlDbType.VarChar, 50, ParameterDirection.Input, ""));
+                    //opc.Add(DataPara.CreateProcParameter("@P_EmployeeId", SqlDbType.VarChar, 50, ParameterDirection.Input, ""));
+                    //opc.Add(DataPara.CreateProcParameter("@P_CarPlate", SqlDbType.VarChar, 50, ParameterDirection.Input, txtCarPlate.Text.Trim()));
+                    //opc.Add(DataPara.CreateProcParameter("@P_otype", SqlDbType.VarChar, 50, ParameterDirection.Input, "3"));
+                    //DataTable dt2 = sdb.RunProc2("P_GetParkRecordE", opc);
+                    DataTable dt2 = sdb.Execute(sql, opc, 30000);
+
+                    if (dt2.Rows.Count > 0)
+                    {
+                        MultiParkNo.DataTextField = "ParkSpaceID";
+                        MultiParkNo.DataValueField = "ParkSpaceID";
+                        MultiParkNo.DataSource = dt2;
+                        MultiParkNo.DataBind();
+                    }
+                }
+                sbErrorType.Items.Add(new ListItem("", "4"));
+                sbErrorType.Items.Add(new ListItem("", "3"));
+                {
+                    ////
+                    //sql = @"
+                    //DECLARE @nowDate NVARCHAR(10);
+                    //SET @nowDate = CONVERT(NVARCHAR(10), GETDATE(), 121);
+                    //SELECT T1.*,pc.fName FROM(
+                    //SELECT CarPlate,ParkSpaceID,
+                    //        employeeid
+                    //FROM 
+                    //WHERE 1=1
+                    //    AND ENABLE = 'Y'
+                    //    AND @nowDate + '_' + ParkSpaceID NOT IN( 
+                    //                                            SELECT CONVERT( NVARCHAR(10), bookDate, 121) + '_' + PB.parkSpaceID
+                    //                                            FROM  PB
+                    //                                            WHERE CONVERT(NVARCHAR(10), bookDate, 121) = @nowDate
+                    //                                                AND PB.ParkSpaceID = TB_ParkSpaceMap.ParkSpaceID )
+                    //UNION ALL
+                    //SELECT CarPlate,ParkSpaceID,
+                    //        employeeid
+                    //FROM 
+                    //WHERE CONVERT(NVARCHAR(10), bookDate, 121) = @nowDate
+                    //) T1,RID641.icdb.dbo.V_CustomerInfo_PhysicCard pc
+                    //WHERE T1.employeeid = pc.fEmployeeCode  COLLATE DATABASE_DEFAULT
+                    //";
+                    //
+                    //SqlDB sdb = new SqlDB();
+                    //opc.Clear();
+                    //dtParkList = sdb.Execute(sql,opc,33000);
+                    //iJAParkList.Value = PublicFunction.ToJson(dtParkList).ToString();
+                }
+                
+            }
+            else
+            {
+                divHint.Style.Remove("display");
+                divContent.Style.Add("display", "none");
+                //txtEmployeeID.Text = NO_MEMBER_DATA;
+                //txtEmployeeName.Text = NO_MEMBER_DATA;
+                //btnSubmitC.Attributes.Add("disabled", "disabled");
+            }
+
+        }
+    }
+    protected void txt_ChangeToBig5(object sender, EventArgs e)
+    {
+        try
+        {
+            TextBox txtObj = (TextBox)sender;
+            txtObj.Text = Helper.ConvertChinese(txtObj.Text.Trim(), "Big5");
+        }
+        catch (Exception)
+        {
+            try
+            {
+                HtmlTextArea txtObj = (HtmlTextArea)sender;
+                txtObj.Value = Helper.ConvertChinese(txtObj.Value.Trim(), "Big5");
+            }
+            catch (Exception)
+            {
+
+            }
+        }
+    }
+
+    protected void sbParkNo_Change(object sender, EventArgs e)
+    {
+        txtEmployeeID.Text = "";
+        txtEmployeeName.Text = "";
+        txtCarPlate.Text = "";
+        if (sbParkNo.SelectedValue != "")
+        {
+            String[] sAry = sbParkNo.SelectedValue.ToString().Split('@');
+            txtEmployeeID.Text = sAry[2];
+            txtCarPlate.Text = sAry[3];
+            txtEmployeeName.Text = sAry[1];
+            //JArray jaParkList = JArray.Parse(iJAParkList.Value);
+            //JObject joParkItem = new JObject();
+            //foreach (JObject jo in jaParkList)
+            //{
+            //    if (jo.GetValue("ParkSpaceID").ToString().Equals(sbParkNo.SelectedValue.ToString()))
+            //    {
+            //        joParkItem = jo;
+            //    }
+            //}
+            //if(joParkItem.ToString().Length > 2)
+            //{            
+            //    txtEmployeeID.Text = joParkItem["employeeid"].ToString();
+            //    txtCarPlate.Text = joParkItem["CarPlate"].ToString();
+            //    txtEmployeeName.Text = joParkItem["fName"].ToString();
+            //}else
+            //{
+            //    
+            //    string empID = "";
+            //    {
+            //        sdbSPMCon = DataPara.GetDbConnectionString("SPM");
+            //        //
+            //        SqlDB sdb = new SqlDB();
+            //        sql = @"
+            //    --for debug
+            //    --DECLARE @ParkSpaceID NVARCHAR(30);
+            //    --SET @ParkSpaceID = '277';
+            //    -------------------------------
+            //    DECLARE @nowDate NVARCHAR(10);
+            //    SET @nowDate = CONVERT(NVARCHAR(10), GETDATE(), 121);
+            //    SELECT CarPlate,
+            //           employeeid
+            //    FROM 
+            //    WHERE ParkSpaceID = @ParkSpaceID
+            //      AND ENABLE = 'Y'
+            //      AND @nowDate + '_' + ParkSpaceID NOT IN( 
+            //                                               SELECT CONVERT( NVARCHAR(10), bookDate, 121) + '_' + parkSpaceID
+            //                                               FROM TB_ParkSpaceBooking
+            //                                               WHERE CONVERT(NVARCHAR(10), bookDate, 121) = @nowDate
+            //                                                 AND ParkSpaceID = @ParkSpaceID )
+            //    UNION ALL
+            //    SELECT CarPlate,
+            //           employeeid
+            //    FROM 
+            //    WHERE CONVERT(NVARCHAR(10), bookDate, 121) = @nowDate
+            //      AND ParkSpaceID = @ParkSpaceID;
+            //    ";
+            //        opc.Clear();
+            //        opc.Add(DataPara.CreateDataParameter("@ParkSpaceID", SqlDbType.NVarChar, sbParkNo.SelectedValue));
+
+            //        DataTable dt = sdb.Execute(sql, opc, 30000);
+            //        if (dt.Rows.Count > 0)
+            //        {
+            //            txtEmployeeID.Text = dt.Rows[0]["employeeid"].ToString();
+            //            txtCarPlate.Text = dt.Rows[0]["CarPlate"].ToString();
+            //        }
+            //    }
+            //    
+            //    {
+            //        if (txtEmployeeID.Text != "")
+            //        {
+            //            
+            //            SqlDB sdbICDB = new SqlDB();
+            //            sql = @"SELECT fEmployeeCode,fName FROM V_CustomerInfo_PhysicCard WHERE fEmployeeCode=@EMPLOYEEID";
+            //            opc.Clear();
+            //            opc.Add(DataPara.CreateDataParameter("@EMPLOYEEID", SqlDbType.NVarChar, txtEmployeeID.Text));
+
+            //            DataTable dt = sdbICDB.Execute(sql, opc, 30000);
+            //            if (dt.Rows.Count > 0)
+            //            {
+            //                txtEmployeeName.Text = dt.Rows[0]["fName"].ToString();
+            //            }
+            //        }
+            //    }
+            //}
+
+        }
+
+    }
+    
+    protected void sbErrorType_Change(object sender, EventArgs e)
+    {
+        txtCarPlateWrong.Text = "";
+        if (sbErrorType.SelectedValue == "3")
+        {
+
+            divCarPlateWrong.Style.Remove("display");
+            divWrongCarPic.Style.Remove("display");
+            divWrongPlate.Style.Remove("display");
+            EmployeeId.Style.Remove("display");
+            Name.Style.Remove("display");
+            CarNo.Style.Remove("display");
+            Add.Style.Add("display", "none");
+            NoUse.Style.Add("display", "none");
+            CarNo2.Style.Remove("display");
+            CarNo3.Style.Add("display", "none");
+            btnSubmitC.Style.Remove("display");
+        }
+        else
+        {
+            divCarPlateWrong.Style.Add("display", "none");
+            divWrongCarPic.Style.Add("display", "none");
+            divWrongPlate.Style.Add("display", "none");
+            EmployeeId.Style.Add("display", "none");
+            Name.Style.Add("display", "none");
+            CarNo.Style.Add("display", "none");
+            Add.Style.Remove("display");
+            NoUse.Style.Remove("display");
+            CarNo2.Style.Add("display", "none");
+            CarNo3.Style.Remove("display");
+            btnSubmitC.Style.Add("display", "none");
+        }
+        //if (sbErrorType.SelectedValue == "4")
+        //{
+
+        //}
+    }
+    protected void btnSubmit_Click(object sender, EventArgs e)
+    {
+        if (sbErrorType.SelectedValue == "3")
+        {
+            //showMsg("完成");
+            //return;
+            //没车位反馈toCheck
+            try
+            {
+                String OccupiedPlate = txtCarPlateWrong.Text.Replace("-", "").Replace(".", "").Replace(" ", "").Replace("？", "");
+                txtCarPlateWrong.Text = OccupiedPlate;
+
+                String CheckMsg = checkValid();
+                if (!String.IsNullOrEmpty(CheckMsg))
+                {
+                    showMsg(CheckMsg);
+                    return;
+                }
+                btnSubmit.Attributes.Add("disabled", "disabled");
+                btnSubmit.Text = "";
+
+                SqlDB sdb = new SqlDB(sdbSPMCon);
+
+                String ColumeWithAt = @"@employeeid,@ParkSpaceID,@occrtime,@otype,@RecordUserEID,@WrongPlateNo";
+                String Colume = ColumeWithAt.Replace("@", "");
+
+                sql = String.Format("INSERT INTO TB_ParkSpaceRecord ({0}) VALUES ({1})", Colume, ColumeWithAt.Replace("@occrtime", "getDate()"));
+                opc.Clear();
+                opc.Add(DataPara.CreateDataParameter("@employeeid", SqlDbType.NVarChar, txtOperEID.Text));
+                opc.Add(DataPara.CreateDataParameter("@ParkSpaceID", SqlDbType.NVarChar, sbParkNo.SelectedValue.ToString().Split('@')[0]));
+                opc.Add(DataPara.CreateDataParameter("@otype", SqlDbType.NVarChar, sbErrorType.SelectedValue));
+                opc.Add(DataPara.CreateDataParameter("@RecordUserEID", SqlDbType.NVarChar, txtOperEID.Text));
+                if (txtCarPlateWrong.Text == "")
+                {
+                    sql = sql.Replace(",WrongPlateNo", "");
+                    sql = sql.Replace(",@WrongPlateNo", "");
+                }
+                opc.Add(DataPara.CreateDataParameter("@WrongPlateNo", SqlDbType.NVarChar, txtCarPlateWrong.Text));
+                sdb.ExecuteNonQuery(sql, opc);
+                if (sbErrorType.SelectedValue == "3")
+                {
+
+                }
+                updateWrongCarData(iWrongCarPic, txtCarPlateWrong);
+                showMsg("完成");
+            }
+            catch (Exception ex)
+            {
+                showMsg(":" + ex.Message);
+                //System.Diagnostics.Debug.WriteLine(ex.Message);
+            }
+            finally
+            {
+                btnSubmitC.Attributes.Remove("disabled");
+                //btnSubmit.Attributes.Remove("disabled");
+                //btnSubmit.Text = "提交";
+            }
+        }
+        else
+        {
+            showMsg("完成");
+        }
+    }
+
+    protected void btnSave_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            String OccupiedPlate = txtCarPlateWrong.Text.Replace("-", "").Replace(".", "").Replace(" ", "").Replace("？", "");
+            txtCarPlateWrong.Text = OccupiedPlate;
+
+            string CheckMsg = unParkNo.SelectedItem.ToString();
+            if (String.IsNullOrEmpty(CheckMsg))
+            {
+                showMsg("");
+                return;
+            }
+            //btnSubmit.Attributes.Add("disabled", "disabled");
+            //btnSubmit.Text = "";
+
+            
+            SqlDB sdb = new SqlDB(sdbSPMCon);
+
+            String ColumeWithAt = @"@employeeid,@ParkSpaceID,@occrtime,@otype,@RecordUserEID,@WrongPlateNo";
+            String Colume = ColumeWithAt.Replace("@", "");
+            //上下这两行检查一下
+            sql = String.Format("INSERT INTO TB_ParkSpaceRecord ({0}) VALUES ({1})", Colume, ColumeWithAt.Replace("@occrtime", "getDate()"));
+            for (int i = 0; i < unParkNo.Items.Count; i++)
+            {
+                if (unParkNo.Items[i].Selected == true)
+                {
+                    opc.Clear();
+                    opc.Add(DataPara.CreateDataParameter("@employeeid", SqlDbType.NVarChar, txtOperEID.Text));
+                    opc.Add(DataPara.CreateDataParameter("@ParkSpaceID", SqlDbType.NVarChar, unParkNo.Items[i].Value));//loop列值sbParkNo.SelectedValue.ToString().Split('@')[0]
+                    opc.Add(DataPara.CreateDataParameter("@otype", SqlDbType.NVarChar, sbErrorType.SelectedValue));
+                    opc.Add(DataPara.CreateDataParameter("@RecordUserEID", SqlDbType.NVarChar, txtOperEID.Text));
+                    if (txtCarPlateWrong.Text == "")
+                    {
+                        sql = sql.Replace(",WrongPlateNo", "");
+                        sql = sql.Replace(",@WrongPlateNo", "");
+                    }
+                    opc.Add(DataPara.CreateDataParameter("@WrongPlateNo", SqlDbType.NVarChar, txtCarPlateWrong.Text));
+                    sdb.ExecuteNonQuery(sql, opc);
+                }
+                    //chkSelect += unParkNo.Items[i].Value + ",";
+            }
+            
+            getList();
+            for (int i = 0; i < unParkNo.Items.Count; i++)
+            {
+                if (unParkNo.Items[i].Selected == true)
+                {
+                    unParkNo.Items[i].Selected = false;
+                }
+            }
+            if (sbErrorType.SelectedValue == "3")
+            {
+
+            }
+            //updateWrongCarData(iWrongCarPic, txtCarPlateWrong);
+            //showMsg("完成");
+        }
+        catch (Exception ex)
+        {
+            showMsg("失败:" + ex.Message);
+            //System.Diagnostics.Debug.WriteLine(ex.Message);
+        }
+        finally
+        {
+            btnSubmitC.Attributes.Remove("disabled");
+            //btnSubmit.Attributes.Remove("disabled");
+            //btnSubmit.Text = "提交";
+        }
+
+    }
+
+    protected void btnDelete_Click(object sender, EventArgs e)
+    {
+        SqlDB sdb = new SqlDB();
+        string strID = iModSID.Value.ToString();
+        string innerHtml = "";
+        string innerParkNO = sdbParkNO.Replace(iModSID.Value.ToString(), "");//select * from TB_ParkSpaceRecord where ParkSpaceID in (innerParkNO)
+        //if (!CheckAddStatues(strID))
+        //{
+        //    showMsg("");
+        //    return;
+        //}
+        string sql = @"
+            delete from TB_ParkSpaceRecord where ParkSpaceID=@id
+            ";
+
+        opc.Clear();
+        opc.Add(DataPara.CreateDataParameter("@id", SqlDbType.NVarChar, strID.Trim()));
+        sdb.ExecuteNonQuery(sql, opc);
+
+        //sql = @"
+        //        select * from TB_ParkSpaceRecord where otype = '4' and occrtime >= convert(varchar(10),Getdate(),120) and occrtime < convert(varchar(10),dateadd(d,1,Getdate()),120) and ParkSpaceID in (" + sdbParkNO + ") order by ParkSpaceID ";
+        //opc.Clear();
+
+
+        Control wef = divCardApplyList.FindControl("spCard_" + iModSID.Value.ToString());
+        //wef.Visible = false;
+        //divCardApplyList.InnerText.
+        //divCardApplyList.InnerHtml.Remove("<span id=spCard_" + dr["sid"].ToString() + ">");//getList();
+        //divCardApplyList.InnerHtml.Remove(dr["ParkSpaceID"].ToString());
+        //divCardApplyList.InnerHtml.Remove("<a href='javascript:modCardApply(" + dr["sid"].ToString() + ");'> </a>");
+        ControlCollection addspan = divCardApplyList.Controls;
+        innerHtml = divCardApplyList.InnerHtml;
+        //string erg = "<span id=spCard_" + iModSID.Value + ">" + iModSID.Value + "</span>";
+        innerHtml = innerHtml.Replace("<span id=spCard_" + iModSID.Value + ">" + iModSID.Value + "</span>" + "<a href='javascript:modCardApply(" + iModSID.Value + ");'> 刪除</a></BR>\r\n", "");
+        //divCardApplyList.InnerHtml.Replace("<span id=spCard_" + iModSID.Value + ">" + iModSID.Value + "</span>", "");
+        //string wefr = "<span id=\"spCard_" + iModSID.Value + "\">" + iModSID.Value + "</span>";
+        divCardApplyList.InnerHtml = innerHtml;
+        string innetext = divCardApplyList.InnerHtml;
+
+        iModSID.Value = "";
+    }
+
+    void getList()
+    {
+        string chkSelect = "";
+        for (int i = 0; i < unParkNo.Items.Count; i++)
+        {
+            if (unParkNo.Items[i].Selected == true)
+                chkSelect += unParkNo.Items[i].Value + ",";
+        }
+        chkSelect = chkSelect + "''";
+        sdbParkNO = chkSelect;
+        string sql = @"
+                select * from  where otype = '4' and occrtime >= convert(varchar(10),Getdate(),120) and occrtime < convert(varchar(10),dateadd(d,1,Getdate()),120) and ParkSpaceID in (" + chkSelect + ") order by ParkSpaceID ";//and ParkSpaceID = @ParkSpaceID
+        opc.Clear();
+        //opc.Add(DataPara.CreateDataParameter("@ParkSpaceID", SqlDbType.NVarChar, chkSelect));//unParkNo.SelectedItem.Text.Trim()
+
+        DataTable dt = sdb.GetDataTable(sql, opc);
+
+        StringBuilder sbHtmlContent = new StringBuilder();
+        if (dt.Rows.Count > 0)
+        {
+            for (int i = 0; i < dt.Rows.Count; i++)
+            {
+                DataRow dr = dt.Rows[i];
+                sbHtmlContent.Append("<span id=spCard_" + dr["ParkSpaceID"].ToString() + ">");
+                sbHtmlContent.Append(dr["ParkSpaceID"].ToString());
+                //sbHtmlContent.Append(" || ");
+                //sbHtmlContent.Append(dr["ApplyLoc"].ToString());
+                //sbHtmlContent.Append(" || ");
+                //sbHtmlContent.Append(dr["LocManager"].ToString());
+                sbHtmlContent.Append("</span>");
+                sbHtmlContent.Append("<a href='javascript:modCardApply(" + dr["ParkSpaceID"].ToString() + ");'> </a>");
+
+                if (i < (dt.Rows.Count - 1))
+                {
+                    sbHtmlContent.Append("</BR>");
+                }
+                sbHtmlContent.Append(Environment.NewLine);
+            }
+            divCardApplyList.InnerHtml = sbHtmlContent.ToString();
+        }
+        else
+        {
+            divCardApplyList.InnerHtml = "";
+        }
+
+    }
+
+    void showMsg(String sMsg)
+    {
+        btnSubmit.Attributes.Remove("disabled");
+        btnSubmit.Text = "提交";
+        ScriptManager.RegisterClientScriptBlock(UpdatePanel1, this.GetType(), "script", "setTimeout(function () {showMsg('" + sMsg + "');},150);", true);
+    }
+
+    String checkValid()
+    {
+        String CustomMessage = "";
+        try
+        {
+            if (txtEmployeeID.Text == ParkSpaceModule.NO_MEMBER_DATA)
+            {
+                return ParkSpaceModule.NO_MEMBER_DATA;
+            }
+
+            if (txtEmployeeName.Text == ParkSpaceModule.NO_MEMBER_DATA)
+            {
+                return ParkSpaceModule.NO_MEMBER_DATA;
+            }
+
+            if (sbParkNo.SelectedValue == "")
+            {
+                return ParkSpaceModule.NO_PARKING_SPACE;
+            }
+            //
+            String OccupiedPlate = txtCarPlateWrong.Text.Replace("-", "").Replace(".", "").Replace(" ", "").Replace("？", "");
+            txtCarPlateWrong.Text = OccupiedPlate;
+
+            if (sbErrorType.SelectedValue == "3" && (txtCarPlateWrong.Text == "" || txtCarPlateWrong.Text.Length < 7))
+            {
+                if (txtCarPlateWrong.Text == "")
+                {
+                    return ParkSpaceModule.NO_WRONG_PLATE_NO;
+                }
+
+                if (txtCarPlateWrong.Text.Length < 7)
+                {
+                    return ParkSpaceModule.WRONG_CAR_LICENSE_FORMAT;
+                }
+
+                if (hFileData.Value.ToString().Length == 0)
+                {
+                    return ParkSpaceModule.NO_WRONG_CAR_PIC;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            CustomMessage = "";
+        }
+        return CustomMessage;
+    }
+
+    bool CheckTime(string otTime)
+    {
+        bool temp = true;
+
+        if (otTime.Length != 5)
+        {
+            temp = false;
+        }
+        else
+        {
+            string sHour = string.Empty;
+            string sMin = string.Empty;
+            string sMid = string.Empty;
+
+            double dHour = 0;
+            double dMin = 0;
+            sHour = otTime.Substring(0, 2);
+            sMid = otTime.Substring(2, 1);
+            sMin = otTime.Substring(3, 2);
+            if (sMid != ":")
+            {
+                temp = false;
+            }
+            
+            try
+            {
+                dHour = double.Parse(sHour);
+                if (dHour >= 24)
+                {
+                    temp = false;
+                }
+            }
+            catch
+            {
+                temp = false;
+            }
+            
+            try
+            {
+                dMin = double.Parse(sMin);
+                if (dMin >= 60)
+                {
+                    temp = false;
+                }
+            }
+            catch
+            {
+                temp = false;
+            }
+
+        }
+        return temp;
+    }
+
+    DateTime CalculateFirstDateOfWeek(DateTime dt, int x)
+    {
+        return dt.AddDays(x - (int)dt.DayOfWeek);
+    }
+
+    bool CheckTel(string tel)
+    {
+        Regex reg = new Regex(@"^0?1[3|4|5|7|8][0-9]\d{8}$");
+        if (reg.IsMatch(tel))
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    protected void btnLogout_Click(object sender, EventArgs e)
+    {
+        {
+            PublicFunction.clearCookie(Response, "SCookieWeb");
+            PublicFunction.clearCookie(Response, "SCookieWebP");
+            sLogonID.Value = "";
+            Response.Redirect("~/Web/ParkSpace/ParkLogin.aspx");
+        }
+    }
+    private void updateWrongCarData(HtmlInputFile hif, TextBox txtOccupiedPlate)
+    {
+        String sFilePostName = "";
+        String sDateTime = "";
+
+        SqlDB sdb = new SqlDB();
+        //String sq12 = "123";
+        try
+        {
+            String nowYMD = DateTime.Now.ToString("yyyyMMdd");
+            String nowHMSF = DateTime.Now.ToString("HHmmssfff");
+            if (sbErrorType.SelectedValue == "3" && hFileData.Value.ToString().Length >0)// //hif.PostedFile.FileName != "" && 
+            {
+                //
+                String sFile = iPathParkSpace.Value + nowYMD + "_" + sbParkNo.SelectedValue.ToString().Split('@')[0] + "_" + nowHMSF + ".jpg";
+                String[] sList = Regex.Split(hFileData.Value.ToString(), "@#@");
+                for (int i = 0; i < sList.Length; i++)
+                {
+                    try
+                    {
+                        if (sList[i].Length > 0)
+                        {
+                            string fileNameWitPath = sFile;
+
+                            using (FileStream fs = new FileStream(fileNameWitPath, FileMode.Create))
+                            {
+                                using (BinaryWriter bw = new BinaryWriter(fs))
+                                {
+                                    try
+                                    {
+                                        String sss = sList[i];
+                                        byte[] data = Convert.FromBase64String(sss);
+                                        bw.Write(data);
+                                        bw.Close();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        WriteLog(ex.Message);
+                                        WriteLog(ex.StackTrace);
+                                    }
+
+
+                                }
+                                fs.Close();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(ex.Message);
+                        WriteLog(ex.StackTrace);
+                        showMsg(ex.Message);
+
+                    }
+
+
+                }
+                //hif.PostedFile.SaveAs(sFile);
+                //compressImg(sFile);
+                //写入DB
+                {
+                    String ColumeWithAt = @"@occr_date_YMD,@ParkSpaceID,@occr_time_HMS,@pic_type";
+                    String Colume = ColumeWithAt.Replace("@", "");
+
+                    sql = String.Format("INSERT INTO  ({0}) VALUES ({1})", Colume, ColumeWithAt);
+
+                }
+                opc.Clear();
+                opc.Add(DataPara.CreateDataParameter("@occr_date_YMD", SqlDbType.NVarChar, nowYMD));
+                opc.Add(DataPara.CreateDataParameter("@ParkSpaceID", SqlDbType.NVarChar, sbParkNo.SelectedValue.ToString().Split('@')[0]));
+                opc.Add(DataPara.CreateDataParameter("@occr_time_HMS", SqlDbType.NVarChar, nowHMSF));
+                opc.Add(DataPara.CreateDataParameter("@pic_type", SqlDbType.NVarChar, ParkSpaceModule.TYPE_PIC_WRONG_PLATE));//ParkSpaceModule.TYPE_PIC_WRONG_PLATE = "1"
+                bool success2 = sdb.ExecuteNonQuery(sql, opc);
+            }
+
+
+        }
+        catch (Exception ex)
+        {
+            showMsg(":" + ex.Message);
+        }
+    }
+
+
+    private ImageCodecInfo GetEncoder(ImageFormat format)
+    {
+        ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
+        foreach (ImageCodecInfo codec in codecs)
+        {
+            if (codec.FormatID == format.Guid)
+            {
+                return codec;
+            }
+        }
+        return null;
+    }
+
+    private static RotateFlipType OrientationToFlipType(string orientation)
+    {
+        switch (int.Parse(orientation))
+        {
+            case 1:
+                return RotateFlipType.RotateNoneFlipNone;
+
+            case 2:
+                return RotateFlipType.RotateNoneFlipX;
+
+            case 3:
+                return RotateFlipType.Rotate180FlipNone;
+            case 4:
+                return RotateFlipType.Rotate180FlipX;
+                break;
+            case 5:
+                return RotateFlipType.Rotate90FlipX;
+                break;
+            case 6:
+                return RotateFlipType.Rotate90FlipNone;
+            case 7:
+                return RotateFlipType.Rotate270FlipX;
+            case 8:
+                return RotateFlipType.Rotate270FlipNone;
+            default:
+                return RotateFlipType.RotateNoneFlipNone;
+        }
+    }
+
+    /// <summary>
+    /// 缩图(调整图片长边缩到800px)
+    /// </summary>
+    /// <param name="sSourceFile"></param>
+    void compressImg(String sSourceFile)
+    {
+        var bmp = new Bitmap(sSourceFile);
+        var exif = new EXIFextractor(ref bmp, "n"); // get source from http://www.codeproject.com/KB/graphics/exifextractor.aspx?fid=207371
+        if (exif["Orientation"] != null)
+        {
+            RotateFlipType flip = OrientationToFlipType(exif["Orientation"].ToString());
+
+            if (flip != RotateFlipType.RotateNoneFlipNone) // don't flip of orientation is correct
+            {
+                bmp.RotateFlip(flip);
+                bmp.Save(sSourceFile, ImageFormat.Jpeg);
+            }
+        }
+        bmp.Dispose();
+
+        String sTempFile = sSourceFile + ".T.jpg";
+        using (Bitmap bmp1 = new Bitmap(sSourceFile))
+        {
+            ImageCodecInfo jpgEncoder = GetEncoder(ImageFormat.Jpeg);
+
+            System.Drawing.Imaging.Encoder myEncoder = System.Drawing.Imaging.Encoder.Quality;
+            EncoderParameters myEncoderParameters = new EncoderParameters(1);
+
+            EncoderParameter myEncoderParameter = new EncoderParameter(myEncoder, 50L);
+            myEncoderParameter = new EncoderParameter(myEncoder, 80L);
+            myEncoderParameters.Param[0] = myEncoderParameter;
+
+            float fLongSide = Math.Max(bmp1.Width, bmp1.Height);
+            if (fLongSide > 800)
+            {
+                float fRadio = 800 / fLongSide;
+                Bitmap resized = new Bitmap((int)(fRadio * bmp1.Width), (int)(fRadio * bmp1.Height));
+                //缩图
+                {
+                    Graphics g = Graphics.FromImage(resized);
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(bmp1, new Rectangle(0, 0, resized.Width, resized.Height), 0, 0, bmp1.Width, bmp1.Height, GraphicsUnit.Pixel);
+                    g.Flush();
+                    g.Dispose();
+                }
+                //
+                //{
+                //    RectangleF rectf = new RectangleF(resized.Width - 400, resized.Height - 40, 400, 40);
+                //    Graphics g = Graphics.FromImage(resized);
+                //    g.SmoothingMode = SmoothingMode.AntiAlias;
+                //    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                //    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                //    g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+
+                //    StringFormat format = new StringFormat()
+                //    {
+                //        Alignment = StringAlignment.Center,
+                //        LineAlignment = StringAlignment.Center
+                //    };
+
+                //    g.DrawString(sDateTime, new Font("Tahoma", 24, FontStyle.Bold), Brushes.GreenYellow, rectf, format);
+                //    //g.DrawString(sDateTime, new Font("Tahoma", 24, FontStyle.Regular), Brushes.GreenYellow, rectf, format);
+                //    g.Flush();
+                //    g.Dispose();
+                //}
+                resized.Save(sTempFile, jpgEncoder, myEncoderParameters);
+                resized.Dispose();
+            }
+            else
+            {
+                //
+                //{
+                //    RectangleF rectf = new RectangleF(bmp1.Width - 400, bmp1.Height - 40, 400, 40);
+                //    Graphics g = Graphics.FromImage(bmp1);
+                //    g.SmoothingMode = SmoothingMode.AntiAlias;
+                //    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                //    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                //    g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+
+                //    StringFormat format = new StringFormat()
+                //    {
+                //        Alignment = StringAlignment.Center,
+                //        LineAlignment = StringAlignment.Center
+                //    };
+
+                //    g.DrawString(sDateTime, new Font("Tahoma", 24, FontStyle.Bold), Brushes.GreenYellow, rectf, format);
+                //    //g.DrawString(sDateTime, new Font("Tahoma", 24, FontStyle.Regular), Brushes.GreenYellow, rectf, format);
+                //    g.Flush();
+                //    g.Dispose();
+                //}
+                bmp1.Save(sTempFile, jpgEncoder, myEncoderParameters);
+                bmp1.Dispose();
+            }
+        }
+        File.Delete(sSourceFile);
+        File.Move(sTempFile, sSourceFile);
+    }
+
+    private void WriteLog(string strLog)
+    {
+        try
+        {
+            strLog = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + "   " + strLog;
+
+            string sPathFileName = "C:\\inetpub\\wwwroot\\CZAPP\\log\\ParkSpace.log";
+            System.IO.StreamWriter sw = new System.IO.StreamWriter(sPathFileName, true, System.Text.Encoding.UTF8, strLog.Length);
+            sw.WriteLine(strLog + "\t" + System.DateTime.Now.ToString());
+            sw.Close();
+        }
+        catch (Exception ex)
+        {
+
+        }
+    }
+}
