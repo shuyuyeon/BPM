@@ -1,0 +1,264 @@
+USE [SPM]
+GO
+
+/****** Object:  StoredProcedure [dbo].[P_HiChenWH]    Script Date: 2020/9/1 下午 02:01:15 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+CREATE PROC [dbo].[P_HiChenWH] @P_ID_DATE NVARCHAR(50)--是否需要参数在写Job内传入
+AS
+SET NOCOUNT ON
+
+BEGIN
+
+declare @sql varchar(50)
+declare @tmpI_fee INT
+declare @tmpO_fee INT
+declare @tmpS_fee INT
+declare @tmpPLTS INT
+declare @tmpCTNS INT
+declare @tmpDate DATETIME
+declare @tmpPLTS_WH INT
+declare @tmpCTNS_WH INT
+declare @tmpDate_WH DATETIME
+declare @tmpPosition VARCHAR(50)
+
+CREATE TABLE #HCWH--每笔明细合计算出来一天的进/出仓费表x都会对应一条
+(tmp日期 DATETIME,--NVARCHAR(50)
+--tmp发票号 NVARCHAR(50),
+--tmp料号 NVARCHAR(50),
+--tmp品名 NVARCHAR(50),
+tmpPLTS_I INT,
+tmpCTNS_I INT,
+tmpPLTS_H INT,
+tmpCTNS_H INT,
+tmpPLTS_P INT,
+tmpCTNS_P INT,
+tmpI_fee INT,
+tmpO_fee INT,
+tmpWH_fee INT
+
+)
+
+BEGIN
+
+DECLARE SS CURSOR 
+FOR select [DateTime], sum(PLTS), sum(CTNS) from TB_HiChenWareHouse_IO 
+where OperateType = 'I' and CONVERT(varchar(7), [DateTime], 120) like @P_ID_DATE
+--between DATEADD(MONTH,-1,DATEADD (DAY,1-DAY(GETDATE()),CONVERT(VARCHAR,GETDATE(),23))) and DATEADD(MILLISECOND,-2,DATEADD(DAY,1-DAY(GETDATE()),CONVERT(VARCHAR,GETDATE(),23)))
+group by [DateTime]
+--SELECT [DateTime],PLTS,CTNS FROM TB_HiChenWareHouse_IO
+--WHERE DateTime between '2020-07-01' and '2020-07-31' and OperateType = 'I'--excel内记的日期,非ID_DATE=GETDATE()
+--occrtime >= convert(varchar(10),Getdate(),120) and occrtime < convert(varchar(10),dateadd(d,1,Getdate()),120)
+
+OPEN SS
+DECLARE @DEP_PLTS INT
+DECLARE @DEP_CTNS INT
+--DECLARE @DEP_Position VARCHAR(20) --库位,仓储判断用
+DECLARE @DEP_I INT
+DECLARE @DEP_O INT
+DECLARE @DEP_DATE DATETIME
+
+FETCH NEXT FROM SS INTO @DEP_DATE,@DEP_PLTS,@DEP_CTNS--@CC,@SORT,@WNO,@ZJ,@DEP_MATERIALNO,@DEP_PRODUCTNAME,
+
+WHILE (@@FETCH_STATUS=0)
+
+BEGIN
+--计算进仓操作费/出仓操作费
+SET @DEP_I = 0
+SET @DEP_O = 0
+
+--if 栈板 > 0 @DEP_PLTS * 12
+
+begin--确认零装的Carton是否全部都能放上Plate
+if @DEP_PLTS > 0
+   begin
+   SET @DEP_I = (@DEP_PLTS * 12)
+   SET @DEP_O = (@DEP_PLTS * 12)
+   SET @DEP_CTNS = 0
+   end
+else
+   begin
+   SET @DEP_I = (@DEP_CTNS * 2)
+   SET @DEP_O = (@DEP_CTNS * 2)
+   end
+end
+
+--begin
+--if @DEP_PLTS > 0
+--   begin
+--   SET @DEP_CTNS = 0
+--   end
+--end
+
+--if 同比记录箱数 > 0 @CTNS * 2
+--SET @DEP_IO = @DEP_IO + (@CTNS * 2)
+
+--------------------------
+
+INSERT #HCWH (tmp日期,tmpPLTS_I,tmpCTNS_I,tmpPLTS_H,tmpCTNS_H,tmpPLTS_P,tmpCTNS_P,tmpI_fee,tmpO_fee,tmpWH_fee)
+VALUES (@DEP_DATE,@DEP_PLTS,@DEP_CTNS,0,0,0,0,@DEP_I,@DEP_O,0) 
+
+--抓取下一行
+FETCH NEXT FROM SS INTO @DEP_DATE,@DEP_PLTS,@DEP_CTNS
+
+END
+CLOSE SS
+DEALLOCATE SS
+--------
+
+--每月一号执行时以下动作，改变日期范围？进出操作费一样也透过游标
+
+--select @tmpPLTS = sum(PLTS), @tmpCTNS = sum(CTNS), @tmpDate = ID_DATE from TB_HiChenWareHouse_IO where OperateType = 'I' 
+--and ID_DATE >= convert(varchar(10),Getdate(),120) and ID_DATE < convert(varchar(10),dateadd(d,1,Getdate()),120) group by ID_DATE
+
+--select @tmpPLTS_WH = sum(PLTS), @tmpCTNS_WH = sum(CTNS), @tmpDate_WH = ID_DATE, @tmpPosition = substring(Position,1,1) from TB_HiChenWH 
+--where ID_DATE >= convert(varchar(10),Getdate(),120) and ID_DATE < convert(varchar(10),dateadd(d,1,Getdate()),120) group by ID_DATE, substring(Position,1,1)
+
+--BEGIN--上移到第一个游标那
+
+--IF @tmpPLTS > 0
+--BEGIN
+--SET @tmpI_fee = @tmpPLTS * 12
+--SET @tmpO_fee = @tmpPLTS * 12
+--END
+--ELSE
+--BEGIN
+--SET @tmpI_fee = @tmpCTNS * 2
+--SET @tmpO_fee = @tmpCTNS * 2
+--END
+
+--INSERT #HCWH (tmp日期,tmpI_fee,tmpO_fee,tmpWH_fee)
+--VALUES (@tmpDate,@tmpI_fee,@tmpO_fee,@tmpS_fee)
+
+--IF @tmpPosition = 'C' or @tmpPosition = 'F' or @tmpPosition = 'M'
+--BEGIN
+--SET @tmpS_fee = (@tmpPLTS_WH * 7) + (@tmpCTNS_WH * 1)
+--END
+--ELSE
+--BEGIN
+--SET @tmpS_fee = (@tmpPLTS_WH * 3) + (@tmpCTNS_WH * 0.5)
+--END
+
+DECLARE SS_STORE CURSOR
+FOR select sum(PLTS), sum(CTNS), ID_DATE from TB_HiChenWH 
+where CONVERT(varchar(7), ID_DATE, 120) like @P_ID_DATE
+--between DATEADD(MONTH,-1,DATEADD (DAY,1-DAY(GETDATE()),CONVERT(VARCHAR,GETDATE(),23))) and DATEADD(MILLISECOND,-2,DATEADD(DAY,1-DAY(GETDATE()),CONVERT(VARCHAR,GETDATE(),23)))
+and ((substring(Position,1,1) = 'C') or (substring(Position,1,1) = 'F') or (substring(Position,1,1) = 'M'))
+group by ID_DATE
+--正式具體要選擇日期區間還是月份
+OPEN SS_STORE
+DECLARE @STORE_PLTS INT
+DECLARE @STORE_CTNS INT
+--DECLARE @STORE_Position VARCHAR(50) --库位,仓储判断用已在游標集區分,不用
+DECLARE @STORE_fee INT
+DECLARE @StartDate DATETIME
+
+FETCH NEXT FROM SS_STORE INTO @STORE_PLTS,@STORE_CTNS,@StartDate--,@STORE_Position
+
+WHILE (@@FETCH_STATUS=0)
+
+BEGIN
+
+SET @STORE_fee = 0
+
+begin--确认零装的Carton是否全部都能放上Plate
+if @STORE_PLTS > 0
+   begin
+   SET @STORE_fee = (@STORE_PLTS * 7) --+ (@STORE_CTNS * 1)--原先我賦值到了全域變量@tmpS_fee
+   SET @STORE_CTNS = 0
+   end
+else
+   begin
+   SET @STORE_fee = (@STORE_CTNS * 1)
+   end
+end
+
+
+INSERT #HCWH (tmp日期,tmpPLTS_I,tmpCTNS_I,tmpPLTS_H,tmpCTNS_H,tmpPLTS_P,tmpCTNS_P,tmpI_fee,tmpO_fee,tmpWH_fee)
+VALUES (@StartDate,0,0,@STORE_PLTS,@STORE_CTNS,0,0,0,0,@STORE_fee)--@tmpI_fee
+
+
+FETCH NEXT FROM SS_STORE INTO @STORE_PLTS,@STORE_CTNS,@StartDate--,@STORE_Position
+
+END
+CLOSE SS_STORE
+DEALLOCATE SS_STORE
+
+
+-----------------------------------------------
+
+DECLARE P_STORE CURSOR
+FOR select sum(PLTS), sum(CTNS), ID_DATE from TB_HiChenWH 
+where CONVERT(varchar(7), ID_DATE, 120) like @P_ID_DATE
+--between DATEADD(MONTH,-1,DATEADD (DAY,1-DAY(GETDATE()),CONVERT(VARCHAR,GETDATE(),23))) and DATEADD(MILLISECOND,-2,DATEADD(DAY,1-DAY(GETDATE()),CONVERT(VARCHAR,GETDATE(),23)))
+and ((substring(Position,1,1) <> 'C') and (substring(Position,1,1) <> 'F') and (substring(Position,1,1) <> 'M')) 
+group by ID_DATE
+
+OPEN P_STORE
+DECLARE @P_STORE_PLTS INT
+DECLARE @P_STORE_CTNS INT
+--DECLARE @P_STORE_Position VARCHAR(50)
+DECLARE @P_STORE_fee INT
+DECLARE @P_StartDate DATETIME
+
+FETCH NEXT FROM P_STORE INTO @P_STORE_PLTS,@P_STORE_CTNS,@P_StartDate--,@P_STORE_Position
+
+WHILE (@@FETCH_STATUS=0)
+
+BEGIN
+
+SET @P_STORE_fee = 0
+
+begin
+if @P_STORE_PLTS > 0
+   begin
+   SET @P_STORE_fee = (@P_STORE_PLTS * 3) --+ (@STORE_CTNS * 1)--原先我賦值到了全域變量@tmpS_fee
+   SET @P_STORE_CTNS = 0
+   end
+else
+   begin
+   SET @P_STORE_fee = (@P_STORE_CTNS * 0.5)
+   end
+end
+
+INSERT #HCWH (tmp日期,tmpPLTS_I,tmpCTNS_I,tmpPLTS_H,tmpCTNS_H,tmpPLTS_P,tmpCTNS_P,tmpI_fee,tmpO_fee,tmpWH_fee)
+VALUES (@P_StartDate,0,0,0,0,@P_STORE_PLTS,@P_STORE_CTNS,0,0,@P_STORE_fee)
+
+
+FETCH NEXT FROM P_STORE INTO @P_STORE_PLTS,@P_STORE_CTNS,@P_StartDate--,@P_STORE_Position
+
+END
+CLOSE P_STORE
+DEALLOCATE P_STORE
+
+
+END
+
+--------
+
+
+
+--      
+set @sql = 'select tmp日期 YM,sum(tmpPLTS_I) PLTS_I,sum(tmpCTNS_I) CTNS_I,sum(tmpI_fee) In_fee,sum(tmpO_fee) Out_fee,sum(tmpPLTS_H) PLTS_H,sum(tmpCTNS_H) CTNS_H,sum(tmpPLTS_P) PLTS_P,sum(tmpCTNS_P) CTNS_P,sum(tmpWH_fee) Store_fee from #HCWH group by tmp日期'
+--select tmp日期,tmpI_fee,tmpO_fee,tmpWH_fee from #HCWH where tmp日期
+select tmp日期 YM,sum(tmpPLTS_I) PLTS_I,sum(tmpCTNS_I) CTNS_I,sum(tmpI_fee) In_fee,sum(tmpO_fee) Out_fee,sum(tmpPLTS_H) PLTS_H,sum(tmpCTNS_H) CTNS_H,sum(tmpPLTS_P) PLTS_P,sum(tmpCTNS_P) CTNS_P,sum(tmpWH_fee) Store_fee from #HCWH group by tmp日期
+UNION 
+select getdate() '合計', sum (tmpPLTS_I) PLTS_I,sum(tmpCTNS_I) CTNS_I,sum(tmpI_fee) In_fee,sum(tmpO_fee) Out_fee,sum(tmpPLTS_H) PLTS_H,sum(tmpCTNS_H) CTNS_H,sum(tmpPLTS_P) PLTS_P,sum(tmpCTNS_P) CTNS_P,sum(tmpWH_fee) Store_fee from #HCWH
+                                                                         --yyyy/MM
+--insert into TB_HiChenWH_Month([Month], In_fee, Out_fee, Store_fee) select tmp日期, sum(tmpI_fee),sum(tmpO_fee),sum(tmpWH_fee) from #HCWH 
+--where tmp日期 between '2020-08-14' and '2020-08-21' group by tmp日期--取2020-08到这-14 00:00:00.000
+
+
+END
+
+
+
+GO
